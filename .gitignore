@@ -1,0 +1,21 @@
+# Dependances
+node_modules/
+
+# Secrets (cle Groq)
+.env
+.env.*
+!.env.example
+
+# Genere par "npm run discover" (IP et MAC de la lampe du labo)
+config.json
+
+# Logs
+npm-debug.log*
+*.log
+
+# Systeme / editeurs
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

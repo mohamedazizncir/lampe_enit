@@ -407,8 +407,9 @@ async function sync() {
       state.power = s.power;
       state.bri = Math.max(1, s.brightness);
       state.kelvin = s.kelvin;
-      if (s.saturation < 0.02) state.mode = 'white';
-      else { state.mode = 'color'; state.hue = s.hue * 360; state.sat = s.saturation * 100; }
+      // /api/state renvoie hue 0-360 et saturation 0-100
+      if (s.saturation < 2) state.mode = 'white';
+      else { state.mode = 'color'; state.hue = s.hue; state.sat = s.saturation; }
       render();
     }
   } catch (e) { if (e.message !== 'Verrouillee') $('msg').textContent = 'Lampe injoignable : ' + e.message; }
