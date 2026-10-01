@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gestes · Lampe ENIT</title>
+<style>
+  :root { --bg:#0e1116; --card:#171b22; --line:#262c36; --txt:#e8ecf1; --muted:#8a94a3; --acc:#ffc94d; --danger:#ff5c5c; --lamp:#ffc94d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; padding:24px 16px; }
+  .wrap { max-width:960px; margin:0 auto; display:grid; grid-template-columns:1fr 300px; gap:14px; }
+  @media (max-width:800px) { .wrap { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; }
+  h1 { font-size:18px; margin:0; }
+  h2 { font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:0 0 12px; font-weight:600; }
+  a { color:var(--muted); font-size:13px; text-decoration:none; }
+  a:hover { color:var(--txt); }
+  .top { grid-column:1/-1; display:flex; justify-content:space-between; align-items:center; }
+
+  .stage { position:relative; border-radius:12px; overflow:hidden; background:#000; aspect-ratio:4/3; }
+  video, canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+  .gauge { position:absolute; right:12px; top:12px; bottom:12px; width:10px; border-radius:5px; background:rgba(255,255,255,.15); }
+  .gauge div { position:absolute; bottom:0; left:0; right:0; border-radius:5px; background:var(--lamp); transition:height .15s; }
+  .overlay { position:absolute; inset:0; display:grid; place-items:center; text-align:center; color:var(--txt); background:rgba(14,17,22,.85); font-size:14px; padding:20px; }
+
+  .stat { display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .stat:last-child { border-bottom:0; }
+  .stat b { font-variant-numeric:tabular-nums; }
+  .dot { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:middle; margin-right:6px; }
+  .orb { width:64px; height:64px; border-radius:50%; margin:4px auto 14px; background:var(--lamp); box-shadow:0 0 36px 4px var(--lamp); transition:.3s; }
+  .orb.off { opacity:.12; box-shadow:none; }
+
+  .legend { display:grid; gap:7px; font-size:13px; color:var(--muted); }
+  .legend span { color:var(--txt); }
+  .btn { width:100%; border:1px solid var(--line); background:#1f252e; color:var(--txt); padding:11px; border-radius:10px; font-size:14px; cursor:pointer; margin-top:12px; }
+  .btn.on { border-color:var(--acc); color:var(--acc); }
+  .msg { font-size:13px; color:var(--danger); min-height:16px; margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>Controle par gestes</h1>
+    <a href="/">← Retour aux commandes</a>
+  </div>
+
+  <div class="card">
+    <div class="stage">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="gauge"><div id="gauge" style="height:0"></div></div>
+      <div class="overlay" id="overlay">Chargement du modele de detection...</div>
+    </div>
+  </div>
+
+  <div style="display:grid; gap:14px; align-content:start">
+    <div class="card">
+      <div class="orb off" id="orb"></div>
+      <div class="stat"><span>Main</span><b id="sHand">aucune</b></div>
+      <div class="stat"><span>Doigts leves</span><b id="sFingers">0</b></div>
+      <div class="stat"><span>Luminosite</span><b id="sBri">-</b></div>
+      <div class="stat"><span>Couleur</span><b id="sColor">-</b></div>
+      <button class="btn on" id="toggle">Envoi a la lampe : actif</button>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Gestes</h2>
+      <div class="legend" id="legend">
+        <div>Montrer la main : <span>allumer</span></div>
+        <div>Hauteur de la main : <span>luminosite</span></div>
+        <div>Poing ferme 1 s : <span>eteindre</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { FilesetResolver, HandLandmarker, DrawingUtils } from '/mediapipe/vision_bundle.mjs';
+
+const $ = id => document.getElementById(id);
+
+// ---------- Reglages ----------
+const COLORS = {
+  1: { name:'Rouge',  hex:'#ff2020' },
+  2: { name:'Vert',   hex:'#20e060' },
+  3: { name:'Bleu',   hex:'#2a5bff' },
+  4: { name:'Violet', hex:'#a030ff' },
+  5: { name:'Blanc',  hex:'#ffffff' }
+};
+const HOLD_COLOR_MS = 600;   // doigts stables avant de changer la couleur
+const HOLD_FIST_MS  = 1000;  // poing ferme avant d'eteindre
+const HAND_ON_MS    = 400;   // main visible avant d'allumer
+const BRI_EVERY_MS  = 250;   // frequence max d'envoi de la luminosite
+
+// legende des couleurs
+Object.entries(COLORS).forEach(([n, c]) => {
+  const d = document.createElement('div');
+  d.innerHTML = `${n} doigt${n > 1 ? 's' : ''} : <span><i class="dot" style="background:${c.hex}"></i>${c.name}</span>`;
+  $('legend').appendChild(d);
+});
+
+// ---------- Envoi vers le serveur ----------
+let sending = true;
+let lampOn = false, lastBri = -1, lastBriSent = 0, lastColor = 0;
+let briBusy = false;
+
+async function api(url, body) {
+  if (!sending) return;
+  try {
+    const r = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(body) });
+    const j = await r.json();
+    if (r.status === 423) { $('msg').textContent = `Lampe verrouillee (${j.lockLeft} s)`; return; }
+    if (!r.ok) throw new Error(j.error);
+    $('msg').textContent = '';
+  } catch (e) { $('msg').textContent = e.message; }
+}
+
+$('toggle').onclick = () => {
+  sending = !sending;
+  $('toggle').classList.toggle('on', sending);
+  $('toggle').textContent = 'Envoi a la lampe : ' + (sending ? 'actif' : 'en pause');
+};
+
+function setLampUI() {
+  $('orb').classList.toggle('off', !lampOn);
+  $('orb').style.opacity = lampOn && lastBri >= 0 ? 0.25 + 0.75 * lastBri / 100 : '';
+}
+
+// ---------- Geometrie de la main ----------
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+// Compte les doigts leves (independant de l'orientation de la main)
+function countFingers(lm) {
+  const wrist = lm[0];
+  const palm = dist(lm[0], lm[9]);
+  let n = 0;
+  // index, majeur, annulaire, auriculaire : bout plus loin du poignet que l'articulation
+  for (const [tip, pip] of [[8, 6], [12, 10], [16, 14], [20, 18]]) {
+    if (dist(lm[tip], wrist) > dist(lm[pip], wrist) * 1.1) n++;
+  }
+  // pouce : bout loin de la base de l'index
+  if (dist(lm[4], lm[5]) > palm * 0.55 && dist(lm[4], lm[17]) > dist(lm[3], lm[17])) n++;
+  return n;
+}
+
+// Hauteur du centre de la main -> luminosite 1..100
+function heightToBrightness(lm) {
+  const y = lm[9].y;                 // 0 = haut de l'image, 1 = bas
+  const t = (0.85 - y) / 0.7;        // zone utile entre 15 % et 85 % de la hauteur
+  return Math.round(Math.max(1, Math.min(100, t * 100)));
+}
+
+// ---------- Logique des gestes ----------
+let handSince = 0, fingersVal = -1, fingersSince = 0, fistSince = 0;
+
+function onHand(lm, now) {
+  if (!handSince) handSince = now;
+  const fingers = countFingers(lm);
+  const bri = heightToBrightness(lm);
+
+  $('sHand').textContent = 'detectee';
+  $('sFingers').textContent = fingers;
+  $('gauge').style.height = bri + '%';
+
+  // Poing ferme -> eteindre
+  if (fingers === 0) {
+    if (!fistSince) fistSince = now;
+    if (lampOn && now - fistSince > HOLD_FIST_MS) {
+      lampOn = false; setLampUI();
+      $('sBri').textContent = 'eteinte';
+      api('/api/power', { on:false });
+    }
+    return;
+  }
+  fistSince = 0;
+
+  // Main visible -> allumer
+  if (!lampOn && now - handSince > HAND_ON_MS) {
+    lampOn = true; setLampUI();
+    api('/api/power', { on:true });
+  }
+  if (!lampOn) return;
+
+  // Hauteur -> luminosite (limite le nombre d'envois)
+  $('sBri').textContent = bri + ' %';
+  if (Math.abs(bri - lastBri) >= 3 && now - lastBriSent > BRI_EVERY_MS && !briBusy) {
+    lastBri = bri; lastBriSent = now; briBusy = true; setLampUI();
+    api('/api/brightness', { value:bri }).finally(() => briBusy = false);
+  }
+
+  // Nombre de doigts -> couleur (doit rester stable)
+  if (fingers !== fingersVal) { fingersVal = fingers; fingersSince = now; }
+  if (COLORS[fingers] && fingers !== lastColor && now - fingersSince > HOLD_COLOR_MS) {
+    lastColor = fingers;
+    const c = COLORS[fingers];
+    $('sColor').innerHTML = `<i class="dot" style="background:${c.hex}"></i>${c.name}`;
+    document.documentElement.style.setProperty('--lamp', c.hex);
+    if (fingers === 5) api('/api/white', { kelvin:4000 });
+    else api('/api/color', { hex:c.hex });
+  }
+}
+
+function noHand() {
+  handSince = 0; fistSince = 0; fingersVal = -1;
+  $('sHand').textContent = 'aucune';
+  $('sFingers').textContent = '0';
+}
+
+// ---------- Camera + MediaPipe ----------
+async function start() {
+  const video = $('video'), canvas = $('canvas'), ctx = canvas.getContext('2d');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video:{ width:640, height:480 } });
+    video.srcObject = stream;
+    await new Promise(r => video.onloadedmetadata = r);
+  } catch (e) {
+    $('overlay').textContent = 'Camera inaccessible : ' + e.message;
+    return;
+  }
+
+  const vision = await FilesetResolver.forVisionTasks('/mediapipe/wasm');
+  const options = delegate => ({
+    baseOptions: {
+      modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+      delegate
+    },
+    runningMode: 'VIDEO',
+    numHands: 1
+  });
+  let detector;
+  try { detector = await HandLandmarker.createFromOptions(vision, options('GPU')); }
+  catch { detector = await HandLandmarker.createFromOptions(vision, options('CPU')); }
+
+  $('overlay').style.display = 'none';
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  const draw = new DrawingUtils(ctx);
+  let lastTime = -1;
+
+  function loop() {
+    const now = performance.now();
+    if (video.currentTime !== lastTime) {
+      lastTime = video.currentTime;
+      const res = detector.detectForVideo(video, now);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (res.landmarks.length) {
+        const lm = res.landmarks[0];
+        draw.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS, { color:'#ffc94d', lineWidth:3 });
+        draw.drawLandmarks(lm, { color:'#ffffff', radius:3 });
+        onHand(lm, now);
+      } else noHand();
+    }
+    requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+start().catch(e => { $('overlay').style.display = 'grid'; $('overlay').textContent = 'Erreur : ' + e.message; });
+</script>
+</body>
+</html>

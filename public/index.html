@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lampe ENIT</title>
+<style>
+  :root {
+    --bg:#0e1116; --card:#171b22; --line:#262c36; --txt:#e8ecf1; --muted:#8a94a3;
+    --acc:#ffc94d; --danger:#ff5c5c; --lamp:#ffc94d;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; padding:24px 16px; }
+  .wrap { max-width:440px; margin:0 auto; display:grid; gap:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; }
+  h2 { font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:0 0 14px; font-weight:600; }
+
+  /* En-tete */
+  .head { display:flex; align-items:center; gap:16px; }
+  .orb { width:72px; height:72px; border-radius:50%; flex:none; background:var(--lamp);
+         box-shadow:0 0 40px 6px var(--lamp); transition:background .3s, box-shadow .3s, opacity .3s; }
+  .orb.off { opacity:.12; box-shadow:none; }
+  .title { flex:1; min-width:0; }
+  .title b { display:block; font-size:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .title span { color:var(--muted); font-size:13px; }
+  .switch { width:56px; height:32px; border-radius:16px; background:#2c333d; border:0; position:relative; cursor:pointer; flex:none; }
+  .switch::after { content:""; position:absolute; top:4px; left:4px; width:24px; height:24px; border-radius:50%; background:#fff; transition:.2s; }
+  .switch.on { background:var(--acc); }
+  .switch.on::after { left:28px; }
+
+  /* Sliders */
+  .row { display:flex; justify-content:space-between; font-size:14px; margin:12px 0 6px; }
+  .row span:last-child { color:var(--muted); font-variant-numeric:tabular-nums; }
+  input[type=range] { -webkit-appearance:none; appearance:none; width:100%; height:14px; border-radius:7px; background:#2c333d; outline:none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:22px; height:22px; border-radius:50%; background:#fff; border:3px solid var(--bg); cursor:pointer; }
+  input[type=range]::-moz-range-thumb { width:18px; height:18px; border-radius:50%; background:#fff; border:3px solid var(--bg); cursor:pointer; }
+  #hue { background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); }
+  #kelvin { background:linear-gradient(90deg,#ff8a2a,#ffd9a8,#fff,#cfe0ff); }
+  #bri { background:linear-gradient(90deg,#222,var(--lamp)); }
+
+  /* Onglets */
+  .tabs { display:flex; background:#0e1116; border-radius:10px; padding:4px; margin-bottom:6px; }
+  .tabs button { flex:1; border:0; background:none; color:var(--muted); padding:8px; border-radius:7px; cursor:pointer; font-size:14px; }
+  .tabs button.active { background:#2c333d; color:var(--txt); }
+  .pane { display:none; } .pane.active { display:block; }
+
+  /* Pastilles */
+  .swatches { display:grid; grid-template-columns:repeat(8,1fr); gap:8px; margin-top:14px; }
+  .sw { aspect-ratio:1; border-radius:50%; border:2px solid transparent; cursor:pointer; padding:0; }
+  .sw:hover { border-color:#fff; }
+  .picker { position:relative; overflow:hidden; background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red); }
+  .picker input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+
+  /* Boutons */
+  .btns { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .btn { border:1px solid var(--line); background:#1f252e; color:var(--txt); padding:11px 8px; border-radius:10px; font-size:14px; cursor:pointer; }
+  .btn:hover { border-color:#3a424f; }
+  .btn.active { border-color:var(--acc); color:var(--acc); }
+
+  .lock { width:100%; border:0; border-radius:12px; padding:14px; font-size:15px; font-weight:600; cursor:pointer;
+          background:var(--danger); color:#fff; position:relative; overflow:hidden; }
+  .lock .bar { position:absolute; left:0; top:0; bottom:0; background:rgba(0,0,0,.25); transition:width 1s linear; }
+  .lock span { position:relative; }
+  .lock:disabled { cursor:default; }
+
+  /* Assistant */
+  .chat { display:flex; flex-direction:column; gap:8px; max-height:260px; overflow-y:auto; margin-bottom:12px; }
+  .chat:empty { display:none; }
+  .bubble { padding:9px 12px; border-radius:12px; font-size:14px; line-height:1.4; max-width:85%; white-space:pre-wrap; }
+  .bubble.user { align-self:flex-end; background:var(--acc); color:#111; border-bottom-right-radius:4px; }
+  .bubble.bot { align-self:flex-start; background:#232a34; border-bottom-left-radius:4px; }
+  .bubble.wait { color:var(--muted); font-style:italic; }
+  .acts { display:block; margin-top:6px; font-size:12px; color:var(--muted); }
+  .ask { display:flex; gap:8px; }
+  .ask input { flex:1; min-width:0; background:#0e1116; border:1px solid var(--line); color:var(--txt); border-radius:10px; padding:11px 12px; font-size:14px; outline:none; }
+  .ask input:focus { border-color:var(--acc); }
+  .ask button { border:0; border-radius:10px; padding:0 16px; background:var(--acc); color:#111; font-weight:600; cursor:pointer; }
+  .ask button:disabled { opacity:.5; cursor:default; }
+  .ask .mic { width:44px; padding:0; display:grid; place-items:center; background:#2c333d; color:var(--txt); flex:none; }
+  .ask .mic svg { width:20px; height:20px; }
+  .ask .mic.rec { background:var(--danger); color:#fff; animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { box-shadow:0 0 0 6px rgba(255,92,92,.25); } }
+  .voice { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; color:var(--muted); cursor:pointer; user-select:none; }
+  .voice input { accent-color:var(--acc); }
+  .voice { justify-content:space-between; cursor:default; }
+  .voice select { background:#0e1116; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:5px 8px; font-size:13px; }
+  .bubble { unicode-bidi:plaintext; }
+
+  .locked .ctrl { opacity:.35; pointer-events:none; }
+  .msg { font-size:13px; color:var(--danger); min-height:16px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+
+  <div class="card head">
+    <div class="orb off" id="orb"></div>
+    <div class="title"><b id="label">Lampe LIFX</b><span id="ip">connexion...</span></div>
+    <button class="switch ctrl" id="power" aria-label="Allumer / eteindre"></button>
+  </div>
+
+  <div class="card ctrl">
+    <h2>Assistant</h2>
+    <div class="chat" id="chat"></div>
+    <form class="ask" id="ask">
+      <input id="prompt" dir="auto" autocomplete="off" placeholder="Ex : fais un lever de soleil, ambiance nuit d'ete...">
+      <button type="button" class="mic" id="mic" title="Parler (cliquer pour commencer, recliquer pour envoyer)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+      <button id="send">Envoyer</button>
+    </form>
+    <div class="voice">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="speak" checked> Reponse vocale</label>
+      <select id="lang" title="Langue parlee">
+        <option value="">Langue : auto</option>
+        <option value="ar">العربية / تونسي</option>
+        <option value="fr">Francais</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card ctrl">
+    <h2>Couleur</h2>
+    <div class="tabs">
+      <button class="active" data-tab="color">Couleur</button>
+      <button data-tab="white">Blanc</button>
+    </div>
+
+    <div class="pane active" id="pane-color">
+      <div class="row"><span>Teinte</span><span id="hueVal">0°</span></div>
+      <input type="range" id="hue" min="0" max="360" value="40">
+      <div class="row"><span>Saturation</span><span id="satVal">100%</span></div>
+      <input type="range" id="sat" min="0" max="100" value="100">
+      <div class="swatches" id="swatches">
+        <label class="sw picker" title="Couleur personnalisee"><input type="color" id="picker" value="#ffc94d"></label>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-white">
+      <div class="row"><span>Temperature</span><span id="kVal">3500 K</span></div>
+      <input type="range" id="kelvin" min="1500" max="9000" step="100" value="3500">
+      <div class="btns" style="margin-top:14px">
+        <button class="btn" data-k="2200">Chaud</button>
+        <button class="btn" data-k="4000">Neutre</button>
+        <button class="btn" data-k="6500">Froid</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card ctrl">
+    <h2>Intensite</h2>
+    <div class="row" style="margin-top:0"><span>Luminosite</span><span id="briVal">50%</span></div>
+    <input type="range" id="bri" min="1" max="100" value="50">
+  </div>
+
+  <div class="card ctrl">
+    <h2>Effets</h2>
+    <div class="btns">
+      <button class="btn" data-fx="blink">Clignoter</button>
+      <button class="btn" data-fx="breathe">Monter / descendre</button>
+      <button class="btn" data-fx="stop">Arreter</button>
+    </div>
+    <div class="row"><span>Vitesse (periode)</span><span id="spdVal">1.0 s</span></div>
+    <input type="range" id="speed" min="200" max="5000" step="100" value="1000">
+  </div>
+
+  <div class="card">
+    <button class="lock" id="lock"><div class="bar" id="lockBar" style="width:0"></div><span id="lockTxt">Eteindre et verrouiller 1 min</span></button>
+  </div>
+
+  <a class="card" href="/gestures.html" style="display:flex;justify-content:space-between;color:var(--txt);text-decoration:none;font-size:15px">
+    <span>Controle par gestes (webcam)</span><span style="color:var(--muted)">→</span>
+  </a>
+
+  <div class="msg" id="msg"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const state = { power:false, hue:40, sat:100, bri:50, kelvin:3500, mode:'color', fx:null };
+let lastTouch = 0, lockTotal = 60;
+
+// ---------- Couleurs ----------
+function hsvToHex(h, s, v = 1) {
+  const f = n => { const k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return '#' + [f(5), f(3), f(1)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+}
+function hexToHsv(hex) {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+  let h = 0;
+  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { h: (h * 60 + 360) % 360, s: max ? d / max : 0 };
+}
+function kelvinToHex(k) { // approximation pour l'apercu
+  const t = (k - 1500) / 7500;
+  const mix = (a, b) => Math.round(a + (b - a) * t);
+  return `rgb(${mix(255, 210)},${mix(140, 225)},${mix(40, 255)})`;
+}
+
+// ---------- Rendu ----------
+function render() {
+  const lamp = state.mode === 'white' ? kelvinToHex(state.kelvin) : hsvToHex(state.hue, state.sat / 100);
+  document.documentElement.style.setProperty('--lamp', lamp);
+  $('orb').classList.toggle('off', !state.power);
+  $('orb').style.opacity = state.power ? 0.25 + 0.75 * state.bri / 100 : '';
+  $('power').classList.toggle('on', state.power);
+  $('hue').value = state.hue; $('hueVal').textContent = Math.round(state.hue) + '°';
+  $('sat').value = state.sat; $('satVal').textContent = Math.round(state.sat) + '%';
+  $('bri').value = state.bri; $('briVal').textContent = state.bri + '%';
+  $('kelvin').value = state.kelvin; $('kVal').textContent = state.kelvin + ' K';
+  $('spdVal').textContent = ($('speed').value / 1000).toFixed(1) + ' s';
+  document.querySelectorAll('[data-fx]').forEach(b => b.classList.toggle('active', b.dataset.fx === state.fx));
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === state.mode));
+  $('pane-color').classList.toggle('active', state.mode === 'color');
+  $('pane-white').classList.toggle('active', state.mode === 'white');
+}
+
+// ---------- API ----------
+async function api(url, body) {
+  const r = await fetch(url, body ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(body) } : {});
+  const j = await r.json();
+  if (r.status === 423) { showLock(j.lockLeft); throw new Error('Verrouillee'); }
+  if (!r.ok) throw new Error(j.error);
+  $('msg').textContent = '';
+  return j;
+}
+const send = (url, body) => api(url, body).catch(e => { $('msg').textContent = e.message; });
+
+// envoie au plus toutes les 150 ms pendant qu'on glisse un slider
+function throttle(fn, ms = 150) {
+  let last = 0, t;
+  return (...a) => {
+    clearTimeout(t);
+    const wait = ms - (Date.now() - last);
+    if (wait <= 0) { last = Date.now(); fn(...a); }
+    else t = setTimeout(() => { last = Date.now(); fn(...a); }, wait);
+  };
+}
+const sendColor = throttle(() => send('/api/color', { hex: hsvToHex(state.hue, state.sat / 100) }));
+const sendWhite = throttle(() => send('/api/white', { kelvin: state.kelvin }));
+const sendBri   = throttle(() => send('/api/brightness', { value: state.bri }));
+
+function touched() { lastTouch = Date.now(); state.fx = null; }
+function ensureOn() { if (!state.power) { state.power = true; send('/api/power', { on: true }); } }
+
+// ---------- Evenements ----------
+$('power').onclick = () => { touched(); state.power = !state.power; render(); send('/api/power', { on: state.power }); };
+
+$('hue').oninput = e => { touched(); state.mode = 'color'; state.hue = +e.target.value; if (state.sat < 5) state.sat = 100; ensureOn(); render(); sendColor(); };
+$('sat').oninput = e => { touched(); state.mode = 'color'; state.sat = +e.target.value; ensureOn(); render(); sendColor(); };
+$('picker').oninput = e => { touched(); const c = hexToHsv(e.target.value); state.mode = 'color'; state.hue = c.h; state.sat = c.s * 100; ensureOn(); render(); sendColor(); };
+
+$('kelvin').oninput = e => { touched(); state.mode = 'white'; state.kelvin = +e.target.value; ensureOn(); render(); sendWhite(); };
+document.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { touched(); state.mode = 'white'; state.kelvin = +b.dataset.k; ensureOn(); render(); sendWhite(); });
+
+$('bri').oninput = e => { touched(); state.bri = +e.target.value; ensureOn(); render(); sendBri(); };
+$('speed').oninput = () => { render(); if (state.fx && state.fx !== 'stop') startFx(state.fx); };
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { state.mode = b.dataset.tab; render(); });
+
+function startFx(type) {
+  lastTouch = Date.now();
+  state.fx = type === 'stop' ? null : type;
+  if (type !== 'stop') state.power = true;
+  render();
+  send('/api/effect', { type, period: +$('speed').value });
+}
+document.querySelectorAll('[data-fx]').forEach(b => b.onclick = () => startFx(b.dataset.fx));
+
+// Pastilles
+['#ff0000','#ff7a00','#ffd400','#00e05a','#00d5ff','#2a5bff','#9b30ff'].forEach(hex => {
+  const b = document.createElement('button');
+  b.className = 'sw'; b.style.background = hex; b.title = hex;
+  b.onclick = () => { touched(); const c = hexToHsv(hex); state.mode = 'color'; state.hue = c.h; state.sat = c.s * 100; ensureOn(); render(); sendColor(); };
+  $('swatches').insertBefore(b, $('swatches').lastElementChild);
+});
+
+// ---------- Assistant LLM ----------
+const history = [];
+const toolNames = { set_light:'reglage', play_scene:'scene', waveform:'effet', stop_effects:'arret', get_state:'lecture' };
+
+function bubble(cls, text) {
+  const b = document.createElement('div');
+  b.className = 'bubble ' + cls;
+  b.dir = 'auto';
+  b.textContent = text;
+  $('chat').appendChild(b);
+  $('chat').scrollTop = $('chat').scrollHeight;
+  return b;
+}
+
+async function ask(text) {
+  $('send').disabled = true; $('mic').disabled = true;
+  bubble('user', text);
+  history.push({ role:'user', content:text });
+  const wait = bubble('bot wait', 'Je reflechis...');
+  try {
+    const r = await api('/api/chat', { history });
+    wait.className = 'bubble bot';
+    wait.textContent = r.reply;
+    const acts = r.actions.filter(a => a.tool !== 'get_state')
+      .map(a => toolNames[a.tool] + (a.args.name ? ' : ' + a.args.name : a.args.type ? ' : ' + a.args.type : ''));
+    if (acts.length) { const s = document.createElement('span'); s.className = 'acts'; s.textContent = acts.join(' · '); wait.appendChild(s); }
+    history.push({ role:'assistant', content:r.reply });
+    say(r.reply);
+    lastTouch = 0; state.fx = null; setTimeout(sync, 800);
+  } catch (err) {
+    wait.className = 'bubble bot';
+    wait.textContent = 'Erreur : ' + err.message;
+    history.pop();
+  }
+  $('send').disabled = false; $('mic').disabled = false;
+}
+
+$('ask').onsubmit = e => {
+  e.preventDefault();
+  const text = $('prompt').value.trim();
+  if (!text) return;
+  $('prompt').value = '';
+  ask(text).then(() => $('prompt').focus());
+};
+
+// ---------- Voix : micro -> Whisper (Groq) -> LLM ----------
+let recorder = null, chunks = [], recTimer = null;
+
+function say(text) {
+  if (!$('speak').checked || !window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = /[\u0600-\u06FF]/.test(text) ? 'ar-SA'
+         : /[àâçéèêëîïôûùü]|\b(je|la|le|les|est|lampe)\b/i.test(text) ? 'fr-FR' : 'en-US';
+  const v = speechSynthesis.getVoices().find(v => v.lang.startsWith(u.lang.slice(0, 2)));
+  if (v) u.voice = v;
+  speechSynthesis.speak(u);
+}
+
+async function startRec() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/mp4'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+    recorder = new MediaRecorder(stream, type ? { mimeType:type } : {});
+    chunks = [];
+    recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+    recorder.onstop = () => { stream.getTracks().forEach(t => t.stop()); sendAudio(); };
+    recorder.start();
+    $('mic').classList.add('rec');
+    $('prompt').placeholder = 'Je t\'ecoute... (reclique pour envoyer)';
+    recTimer = setTimeout(stopRec, 10000); // 10 s max
+  } catch (e) { $('msg').textContent = 'Micro inaccessible : ' + e.message; }
+}
+
+function stopRec() {
+  clearTimeout(recTimer);
+  if (recorder && recorder.state === 'recording') recorder.stop();
+  $('mic').classList.remove('rec');
+  $('prompt').placeholder = 'Ex : fais un lever de soleil, ambiance nuit d\'ete...';
+}
+
+async function sendAudio() {
+  const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+  recorder = null;
+  if (blob.size < 1000) return;
+  $('mic').disabled = true;
+  $('prompt').placeholder = 'Transcription...';
+  try {
+    const r = await fetch('/api/transcribe?lang=' + $('lang').value, { method:'POST', headers:{ 'Content-Type':blob.type.split(';')[0] }, body:blob });
+    const j = await r.json();
+    if (r.status === 423) { showLock(j.lockLeft); throw new Error('Lampe verrouillee'); }
+    if (!r.ok) throw new Error(j.error);
+    if (!j.text) throw new Error('Rien entendu, reessaie');
+    await ask(j.text);
+  } catch (e) { $('msg').textContent = e.message; }
+  $('mic').disabled = false;
+  $('prompt').placeholder = 'Ex : fais un lever de soleil, ambiance nuit d\'ete...';
+}
+
+$('mic').onclick = () => (recorder ? stopRec() : startRec());
+
+// langue memorisee + placeholder adapte
+try { $('lang').value = localStorage.getItem('lang') || ''; } catch (e) {}
+$('lang').onchange = () => { try { localStorage.setItem('lang', $('lang').value); } catch (e) {} };
+window.speechSynthesis && speechSynthesis.getVoices();
+
+// ---------- Verrou ----------
+function showLock(left) {
+  const locked = left > 0;
+  $('app').classList.toggle('locked', locked);
+  $('lock').disabled = locked;
+  $('lockTxt').textContent = locked ? `Verrouillee : ${left} s` : 'Eteindre et verrouiller 1 min';
+  $('lockBar').style.width = locked ? (100 * (1 - left / lockTotal)) + '%' : '0';
+  if (locked) { state.power = false; state.fx = null; render(); }
+}
+$('lock').onclick = async () => {
+  try { const r = await api('/api/lock', { seconds: 60 }); lockTotal = 60; showLock(r.lockLeft); } catch (e) {}
+};
+
+// ---------- Synchronisation avec la vraie lampe ----------
+async function sync() {
+  try {
+    const s = await api('/api/state');
+    $('label').textContent = s.label;
+    $('ip').textContent = s.ip;
+    showLock(s.lockLeft);
+    if (Date.now() - lastTouch > 2500 && !state.fx) { // ne pas ecraser pendant qu'on manipule
+      state.power = s.power;
+      state.bri = Math.max(1, s.brightness);
+      state.kelvin = s.kelvin;
+      if (s.saturation < 0.02) state.mode = 'white';
+      else { state.mode = 'color'; state.hue = s.hue * 360; state.sat = s.saturation * 100; }
+      render();
+    }
+  } catch (e) { if (e.message !== 'Verrouillee') $('msg').textContent = 'Lampe injoignable : ' + e.message; }
+}
+// pendant le verrou, compte a rebours fluide cote client
+setInterval(() => { if ($('lock').disabled) sync(); }, 1000);
+setInterval(() => { if (!$('lock').disabled) sync(); }, 3000);
+render(); sync();
+</script>
+</body>
+</html>
